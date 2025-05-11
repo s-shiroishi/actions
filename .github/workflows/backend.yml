@@ -1,0 +1,55 @@
+name: backend
+on:
+  push:
+    branches:
+      - main
+
+defaults:
+  run:
+    working-directory: backend
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 16.x
+
+      - run: npm ci
+      - run: npm run test -- --coverage
+      - run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: backend/coverage/**
+          retention-days: 5
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: backend/dist/index.js
+          retention-days: 5
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu:latest
+    steps:
+      - uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{secrets.BACKEND_SERVER_SSH_KEY}}
+          known_hosts: ${{secrets.BACKEND_SERVER_KNOWN_HOST}}
+      - run: rsync -v  backend/dist/index.js ${SERVER_USER}@${SERVER_IP}:~/index.js
+        env:
+          SERVER_USER: ${{secrets.BACKEND_SERVER_USER}}
+          SERVER_IP: ${{secrets.BACKEND_SERVER_IP}}
+      - run: ssh ${SERVER_USER}@${SERVER_IP}  sudo systemctl restart backend
+        env:
+          SERVER_USER: ${{secrets.BACKEND_SERVER_USER}}
+          SERVER_IP: ${{secrets.BACKEND_SERVER_IP}}
+      - run: ssh ${SERVER_USER}@${SERVER_IP}  systemctl status backend
+        env:
+          SERVER_USER: ${{secrets.BACKEND_SERVER_USER}}
+          SERVER_IP: ${{secrets.BACKEND_SERVER_IP}}
